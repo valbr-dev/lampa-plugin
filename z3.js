@@ -151,6 +151,82 @@
 
   // Премиум эндпоинты
   var ZPREM_SERVER = (Lampa.Utils && Lampa.Utils.protocol ? Lampa.Utils.protocol() : 'http://') + 'prem.z01.online/';
+  var ZPREM_HOSTS = [
+    { host: 'rf.z01.online', k: 1, add: 0 },
+    { host: 'cf.z01.online', k: 1.2, add: 100 },
+    { host: 'prem2.z01.online', k: 1, add: 0 }
+  ];
+  var ZPREM_PING_TIMEOUT = 3000;
+  var zprem_resolving = false;
+
+  function zpremProto() {
+    return Lampa.Utils && Lampa.Utils.protocol ? Lampa.Utils.protocol() : 'http://';
+  }
+
+  function zpremUse(host) {
+    var server = zpremProto() + host + '/';
+    if (server === ZPREM_SERVER) return;
+    if (Defined.localhost === ZPREM_SERVER) Defined.localhost = server;
+    ZPREM_SERVER = server;
+  }
+
+  function zpremMeasure(host, callback) {
+    var url = zpremProto() + host + '/lite/withsearch';
+    function once(call) {
+      var xhr = new XMLHttpRequest();
+      var done = false;
+      var t0 = Date.now();
+      function finish(ok) {
+        if (done) return;
+        done = true;
+        call(ok ? Date.now() - t0 : -1);
+      }
+      try {
+        xhr.open('GET', url + '?_=' + t0, true);
+        xhr.timeout = ZPREM_PING_TIMEOUT;
+        xhr.onload = function() { finish(xhr.status >= 200 && xhr.status < 400); };
+        xhr.onerror = function() { finish(false); };
+        xhr.ontimeout = function() { finish(false); };
+        xhr.send();
+      } catch (e) {
+        finish(false);
+      }
+    }
+    once(function(first) {
+      if (first < 0) return callback(-1);
+      once(function(second) {
+        callback(second < 0 ? first : Math.min(first, second));
+      });
+    });
+  }
+
+  function zpremResolve() {
+    if (zprem_resolving) return;
+    zprem_resolving = true;
+    var left = ZPREM_HOSTS.length;
+    var best = null;
+    ZPREM_HOSTS.forEach(function(h) {
+      zpremMeasure(h.host, function(ms) {
+        if (ms >= 0) {
+          var score = ms * h.k + h.add;
+          if (!best || score < best.score) best = { host: h.host, score: score };
+        }
+        if (--left) return;
+        if (!best) return;
+        Lampa.Storage.set('zprem_host', best.host);
+        zpremUse(best.host);
+      });
+    });
+  }
+
+  (function() {
+    var saved = Lampa.Storage.get('zprem_host', '');
+    for (var i = 0; i < ZPREM_HOSTS.length; i++) {
+      if (ZPREM_HOSTS[i].host === saved) return zpremUse(saved);
+    }
+  })();
+  zpremResolve();
+
   var ZPREM_CHECK_URL = (Lampa.Utils && Lampa.Utils.protocol ? Lampa.Utils.protocol() : 'http://') + 'oplata.z01.online/check.php';
   var ZPREM_PAY_URL = 'https://oplata.z01.online/pay.php';
   var ZPREM_TRIAL_URL = (Lampa.Utils && Lampa.Utils.protocol ? Lampa.Utils.protocol() : 'http://') + 'oplata.z01.online/trial.php';
