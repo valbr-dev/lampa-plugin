@@ -4743,12 +4743,15 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
       });
     }
     function zpremResetTrial() {
-      // Очищаем только локальные данные демо. UID, email и серверная история не меняются.
-      Lampa.Storage.set('zpremkey', '');
-      Lampa.Storage.set('zprem_expires', '');
+      // Не трогаем обычную платную подписку: очищаем ключ только если отмечено демо.
+      var trialUsed = Lampa.Storage.get('zprem_trial_used', '');
+      if (trialUsed) {
+        Lampa.Storage.set('zpremkey', '');
+        Lampa.Storage.set('zprem_expires', '');
+      }
       Lampa.Storage.set('zprem_trial_used', '');
       try { Lampa.Settings.update(); } catch(e) {}
-      Lampa.Noty.show('Локальный статус демо сброшен. Возможность новой активации проверит сервер.');
+      Lampa.Noty.show('Локальная отметка демо очищена. Возможность новой активации проверит сервер.');
     }
     zpremActivate();
     if (!Lampa.Storage.get('zpremkey', '')) zpremCheck();
