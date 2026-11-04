@@ -4760,7 +4760,11 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
     function zpremTrial(callback) {
       var email = getZ01Email();
       var uid = Lampa.Storage.get('lampac_unic_id', '');
-      if (!email || !uid) { if (callback) callback(false, 'no_data'); return; }
+      if (!uid) {
+        uid = Lampa.Utils.uid(8).toLowerCase();
+        Lampa.Storage.set('lampac_unic_id', uid);
+      }
+      if (!email) { if (callback) callback(false, 'no_data'); return; }
 
       function sendTrialRequest(currentEmail, currentUid, attempts) {
         var net = new Lampa.Reguest();
