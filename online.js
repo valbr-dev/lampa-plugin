@@ -4905,11 +4905,7 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
         item.find('.settings-param__descr,.settings-param__status').text('Дни суммируются при продлении');
       },
       onChange: function() {
-        var email = Lampa.Storage.get('account_email', '');
-        if (!email) {
-          Lampa.Noty.show('Укажите email в настройках аккаунта');
-          return;
-        }
+        var email = getZ01Email();
         var payUrl = ZPREM_PAY_URL + '?email=' + encodeURIComponent(email);
         if (window.z01PayDirect()) {
           window.open(payUrl, '_blank');
@@ -4969,11 +4965,7 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
         }
       },
       onChange: function() {
-        var email = Lampa.Storage.get('account_email', '');
-        if (!email) {
-          Lampa.Noty.show('Укажите email в настройках аккаунта');
-          return;
-        }
+        var email = getZ01Email();
         Lampa.Noty.show('Активируем тестовый доступ...');
         zpremTrial(function(ok, reason) {
           if (ok) {
