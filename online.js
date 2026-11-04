@@ -2403,7 +2403,14 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
       filter.onSelect = function(type, a, b) {
         if (type == 'sort' && sources[a.source] && sources[a.source].vip && !Lampa.Storage.get('zpremkey','')) {
           Lampa.Select.close();
-          _this.vipOffer(a);
+          Lampa.Noty.show('Проверяем подписку...');
+          zpremCheck(function(active) {
+            if (active && Lampa.Storage.get('zpremkey', '')) {
+              _this.switchSource(a.source);
+            } else {
+              _this.vipOffer(a);
+            }
+          });
           return;
         }
         if (type == 'filter') {
