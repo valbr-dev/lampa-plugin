@@ -2309,13 +2309,9 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
         Lampa.Controller.toggle('content');
         return;
       }
-      var userEmail = Lampa.Storage.get('account_email', '');
-      var vipPayUrl = ZPREM_PAY_URL + '?email=' + encodeURIComponent(userEmail || '');
+      var userEmail = getZ01Email();
+      var vipPayUrl = ZPREM_PAY_URL + '?email=' + encodeURIComponent(userEmail);
       var trialUsed = Lampa.Storage.get('zprem_trial_used', '');
-      if (!userEmail) {
-        Lampa.Noty.show('Укажите email в настройках аккаунта');
-        return;
-      }
       var selectItems = [{
         title: '💳 Купить подписку',
         action: 'buy'
@@ -2370,7 +2366,7 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
                   Lampa.Storage.set('zprem_trial_used', '1');
                   Lampa.Noty.show('Тестовый период уже был использован');
                 } else if (reason === 'no_data') {
-                  Lampa.Noty.show('Укажите email в настройках аккаунта');
+                  Lampa.Noty.show('Не удалось создать идентификатор Z01 для устройства');
                 } else {
                   Lampa.Noty.show('Ошибка активации, попробуйте позже');
                 }
@@ -2555,7 +2551,8 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
       query.push('clarification=' + (object.clarification ? 1 : 0));
       query.push('similar=' + (object.similar ? true : false));
       query.push('rchtype=' + (((window.rch_nws && window.rch_nws[hostkey]) ? window.rch_nws[hostkey].type : (window.rch && window.rch[hostkey]) ? window.rch[hostkey].type : '') || ''));
-      if (Lampa.Storage.get('account_email', '')) query.push('cub_id=' + Lampa.Utils.hash(Lampa.Storage.get('account_email', '')));
+      var z01Email = getZ01Email();
+      if (z01Email) query.push('cub_id=' + Lampa.Utils.hash(z01Email));
       return url + (url.indexOf('?') >= 0 ? '&' : '?') + query.join('&');
     };
     this.getLastChoiceBalanser = function() {
@@ -4695,29 +4692,27 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
       if (n1 == 1) return days + ' день';
       return days + ' дней';
     }
-    function zpremActivate() {
+    function isZpremActive() {
       var key = Lampa.Storage.get('zpremkey', '');
       var exp = Lampa.Storage.get('zprem_expires', '');
-      var expires = exp ? new Date(exp).getTime() : NaN;
-
-      // Восстанавливаем Premium по локальному ключу даже если email аккаунта недоступен.
-      if (key && isFinite(expires) && expires > Date.now()) {
-        Defined.localhost = ZPREM_SERVER;
-        zpremResolve();
-        return;
-      }
-
-      // Не оставляем просроченный или повреждённый локальный ключ активным.
-      if (key) {
-        Lampa.Storage.set('zpremkey', '');
-        Lampa.Storage.set('zprem_expires', '');
-      }
+      return !!(key && exp && (new Date(exp).getTime() - Date.now()) > 0);
     }
-    // Идентификаторы для демо. Основной email аккаунта не перезаписываем.
+    // Идентификация Z01 из старой реализации: постоянный UID устройства,
+    // отдельный email Z01 при отсутствии email аккаунта Lampa.
     function getZ01Email() {
       var trialEmail = Lampa.Storage.get('z01_trial_email', '');
       if (trialEmail) return trialEmail;
-      return Lampa.Storage.get('account_email', '');
+      var email = Lampa.Storage.get('account_email', '');
+      if (!email) {
+        var uid = Lampa.Storage.get('lampac_unic_id', '');
+        if (!uid) {
+          uid = Lampa.Utils.uid(8).toLowerCase();
+          Lampa.Storage.set('lampac_unic_id', uid);
+        }
+        email = 'z01_' + uid + '@gmail.com';
+        Lampa.Storage.set('z01_trial_email', email);
+      }
+      return email;
     }
     function rotateZ01TrialEmail() {
       var email = 'z01_' + Lampa.Utils.uid(8).toLowerCase() + '@gmail.com';
@@ -4725,17 +4720,18 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
       return email;
     }
     function resetZ01Uid() {
-      var uid = Lampa.Utils.uid(8).toLowerCase();
-      Lampa.Storage.set('lampac_unic_id', uid);
-      return uid;
+      unic_id = Lampa.Utils.uid(8).toLowerCase();
+      Lampa.Storage.set('lampac_unic_id', unic_id);
+      return unic_id;
     }
     function zpremCheck(callback) {
-      // Сначала проверяем основной аккаунт (платная подписка), затем отдельный demo-email.
+      // Сохраняем проверку платного аккаунта и проверяем автономный Z01 email,
+      // который генерируется из lampac_unic_id, если аккаунт Lampa не подключён.
       var accountEmail = Lampa.Storage.get('account_email', '');
-      var trialEmail = Lampa.Storage.get('z01_trial_email', '');
+      var z01Email = getZ01Email();
       var emails = [];
       if (accountEmail) emails.push(accountEmail);
-      if (trialEmail && trialEmail !== accountEmail) emails.push(trialEmail);
+      if (z01Email && emails.indexOf(z01Email) < 0) emails.push(z01Email);
       if (!emails.length) { if (callback) callback(false); return; }
 
       function checkNext(index) {
@@ -4833,13 +4829,39 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
       try { Lampa.Settings.update(); } catch(e) {}
       Lampa.Noty.show('Демо сброшено: создан новый тестовый email и ID устройства. Можно активировать 48 часов снова.');
     }
+    function zpremAutoEnsure(callback) {
+      if (isZpremActive()) {
+        Defined.localhost = ZPREM_SERVER;
+        if (callback) callback(true);
+        return;
+      }
+      // Сначала проверяем существующую платную/демо-подписку на сервере;
+      // если её нет — запускаем штатную процедуру демо, как в старом z2.js.
+      zpremCheck(function(active) {
+        if (active) {
+          Defined.localhost = ZPREM_SERVER;
+          if (callback) callback(true);
+          return;
+        }
+        zpremTrial(function(ok) {
+          if (ok) Defined.localhost = ZPREM_SERVER;
+          if (callback) callback(!!ok);
+        });
+      });
+    }
+    function zpremActivate() {
+      if (isZpremActive()) {
+        Defined.localhost = ZPREM_SERVER;
+        zpremResolve();
+        return;
+      }
+      zpremAutoEnsure();
+    }
     zpremActivate();
-    // При каждом запуске сверяем локальный ключ с сервером: это восстанавливает
-    // Premium после перезапуска и обновляет срок действия. Сетевой сбой не стирает ключ.
-    zpremCheck();
     window.zpremCheck = zpremCheck;
     window.zpremDaysText = zpremDaysText;
     window.zpremTrial = zpremTrial;
+    window.zpremAutoEnsure = zpremAutoEnsure;
     window.zpremResetTrial = zpremResetTrial;
     Lampa.SettingsApi.addComponent({
       component: 'z01_premium',
