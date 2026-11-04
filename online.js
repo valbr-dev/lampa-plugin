@@ -4742,11 +4742,20 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
         if (callback) callback(false, 'network_error');
       });
     }
+    function zpremResetTrial() {
+      // Очищаем только локальные данные демо. UID, email и серверная история не меняются.
+      Lampa.Storage.set('zpremkey', '');
+      Lampa.Storage.set('zprem_expires', '');
+      Lampa.Storage.set('zprem_trial_used', '');
+      try { Lampa.Settings.update(); } catch(e) {}
+      Lampa.Noty.show('Локальный статус демо сброшен. Возможность новой активации проверит сервер.');
+    }
     zpremActivate();
     if (!Lampa.Storage.get('zpremkey', '')) zpremCheck();
     window.zpremCheck = zpremCheck;
     window.zpremDaysText = zpremDaysText;
     window.zpremTrial = zpremTrial;
+    window.zpremResetTrial = zpremResetTrial;
     Lampa.SettingsApi.addComponent({
       component: 'z01_premium',
       icon: '<svg width="36" height="36" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="8" y="8" width="112" height="112" rx="32" fill="none" stroke="white" stroke-width="12"/><path d="M38 36h52L38 92h52" stroke="white" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>',
@@ -4873,6 +4882,17 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
             Lampa.Noty.show('Ошибка, попробуйте позже');
           }
         });
+      }
+    });
+    Lampa.SettingsApi.addParam({
+      component: 'z01_premium',
+      param: { name: 'z01_trial_reset', type: 'button', default: '' },
+      field: {
+        name: 'Сбросить демо-статус',
+        description: 'Очистить локальный ключ и отметку демо; серверная история активаций не затрагивается'
+      },
+      onChange: function() {
+        zpremResetTrial();
       }
     });
     Lampa.SettingsApi.addParam({
