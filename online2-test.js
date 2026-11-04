@@ -31,23 +31,6 @@
     };
   }
 
-  function updateStatus() {
-    var profile = getTestProfile();
-    var status = profile.active
-      ? 'Тестовый профиль создан. Реальный триал не запрашивался.'
-      : 'Тестовый профиль ещё не создан.';
-
-    Lampa.SettingsApi.addParam({
-      component: COMPONENT,
-      param: {
-        name: 'online2_test_status',
-        type: 'title',
-        default: true
-      },
-      field: { name: status }
-    });
-  }
-
   function createTestProfile() {
     var uid = '';
     try {
@@ -65,7 +48,6 @@
     Lampa.Storage.set('online2_test_active', true);
 
     Lampa.Noty.show('Создан локальный тестовый профиль: ' + uid);
-    updateStatus();
   }
 
   function clearTestProfile() {
@@ -73,7 +55,6 @@
       Lampa.Storage.set(key, '');
     });
     Lampa.Noty.show('Локальный тестовый профиль очищен');
-    updateStatus();
   }
 
   Lampa.SettingsApi.addComponent({
