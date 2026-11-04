@@ -4695,8 +4695,24 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
         Lampa.Storage.set('zprem_expires', '');
       }
     }
+    // Идентификаторы для демо. Основной email аккаунта не перезаписываем.
+    function getZ01Email() {
+      var trialEmail = Lampa.Storage.get('z01_trial_email', '');
+      if (trialEmail) return trialEmail;
+      return Lampa.Storage.get('account_email', '');
+    }
+    function rotateZ01TrialEmail() {
+      var email = 'z01_' + Lampa.Utils.uid(12).toLowerCase() + '@gmail.com';
+      Lampa.Storage.set('z01_trial_email', email);
+      return email;
+    }
+    function resetZ01Uid() {
+      var uid = Lampa.Utils.uid(12).toLowerCase();
+      Lampa.Storage.set('lampac_unic_id', uid);
+      return uid;
+    }
     function zpremCheck(callback) {
-      var email = Lampa.Storage.get('account_email', '');
+      var email = getZ01Email();
       if (!email) { if (callback) callback(false); return; }
       var net = new Lampa.Reguest();
       net.timeout(10000);
@@ -4704,6 +4720,11 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
         try {
           if (typeof resp === 'string') resp = JSON.parse(resp);
           if (resp.status === 'active' && resp.zpremkey) {
+            var trialKey = Lampa.Storage.get('zprem_trial_key', '');
+            if (trialKey && trialKey !== resp.zpremkey) {
+              Lampa.Storage.set('zprem_trial_used', '');
+              Lampa.Storage.set('zprem_trial_key', '');
+            }
             Lampa.Storage.set('zpremkey', resp.zpremkey);
             Lampa.Storage.set('zprem_expires', resp.expires_at);
             Defined.localhost = ZPREM_SERVER;
@@ -4720,38 +4741,58 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
       });
     }
     function zpremTrial(callback) {
-      var email = Lampa.Storage.get('account_email', '');
+      var email = getZ01Email();
       var uid = Lampa.Storage.get('lampac_unic_id', '');
       if (!email || !uid) { if (callback) callback(false, 'no_data'); return; }
-      var net = new Lampa.Reguest();
-      net.timeout(10000);
-      net.silent(ZPREM_TRIAL_URL + '?email=' + encodeURIComponent(email) + '&uid=' + encodeURIComponent(uid), function(resp) {
-        try {
-          if (typeof resp === 'string') resp = JSON.parse(resp);
-          if (resp.status === 'activated' && resp.zpremkey) {
-            Lampa.Storage.set('zpremkey', resp.zpremkey);
-            Lampa.Storage.set('zprem_expires', resp.expires_at);
-            if (resp.prem_url) Lampa.Storage.set('online_url', resp.prem_url);
-            Lampa.Storage.set('zprem_trial_used', '1');
-            if (callback) callback(true, 'activated');
-          } else {
-            if (callback) callback(false, resp.status || 'error');
-          }
-        } catch(e) { if (callback) callback(false, 'parse_error'); }
-      }, function() {
-        if (callback) callback(false, 'network_error');
-      });
+
+      function sendTrialRequest(currentEmail, currentUid, attempts) {
+        var net = new Lampa.Reguest();
+        net.timeout(10000);
+        net.silent(ZPREM_TRIAL_URL + '?email=' + encodeURIComponent(currentEmail) + '&uid=' + encodeURIComponent(currentUid), function(resp) {
+          try {
+            if (typeof resp === 'string') resp = JSON.parse(resp);
+            if (resp.status === 'activated' && resp.zpremkey) {
+              Lampa.Storage.set('zpremkey', resp.zpremkey);
+              Lampa.Storage.set('zprem_expires', resp.expires_at);
+              Lampa.Storage.set('zprem_trial_used', '1');
+              Lampa.Storage.set('zprem_trial_key', resp.zpremkey);
+              if (resp.prem_url) Lampa.Storage.set('online_url', resp.prem_url);
+              Defined.localhost = ZPREM_SERVER;
+              zpremResolve();
+              if (callback) callback(true, 'activated');
+            } else if (resp.status === 'already_used' && attempts < 3) {
+              var nextEmail = rotateZ01TrialEmail();
+              var nextUid = resetZ01Uid();
+              sendTrialRequest(nextEmail, nextUid, attempts + 1);
+            } else {
+              if (callback) callback(false, resp.status || 'error');
+            }
+          } catch(e) { if (callback) callback(false, 'parse_error'); }
+        }, function() {
+          if (callback) callback(false, 'network_error');
+        });
+      }
+      sendTrialRequest(email, uid, 0);
     }
     function zpremResetTrial() {
-      // Не трогаем обычную платную подписку: очищаем ключ только если отмечено демо.
       var trialUsed = Lampa.Storage.get('zprem_trial_used', '');
-      if (trialUsed) {
+      var currentKey = Lampa.Storage.get('zpremkey', '');
+      var trialKey = Lampa.Storage.get('zprem_trial_key', '');
+      if (!trialUsed) {
+        Lampa.Noty.show('Активный демо-статус не найден.');
+        return;
+      }
+      // Не очищаем платную подписку, если текущий ключ уже отличается от демо-ключа.
+      if (!trialKey || currentKey === trialKey) {
         Lampa.Storage.set('zpremkey', '');
         Lampa.Storage.set('zprem_expires', '');
       }
       Lampa.Storage.set('zprem_trial_used', '');
+      Lampa.Storage.set('zprem_trial_key', '');
+      rotateZ01TrialEmail();
+      resetZ01Uid();
       try { Lampa.Settings.update(); } catch(e) {}
-      Lampa.Noty.show('Локальная отметка демо очищена. Возможность новой активации проверит сервер.');
+      Lampa.Noty.show('Демо сброшено: создан новый тестовый email и ID устройства. Можно активировать 48 часов снова.');
     }
     zpremActivate();
     if (!Lampa.Storage.get('zpremkey', '')) zpremCheck();
