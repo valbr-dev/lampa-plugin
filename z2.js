@@ -197,28 +197,16 @@
     return email;
   }
 
-  function rotateZ01TrialEmail() {
-    var base = Lampa.Storage.get('account_email', '');
-    var newEmail = '';
-    if (base && base.indexOf('@') !== -1) {
-      var parts = base.split('@');
-      var name = parts[0].split('+')[0];
-      newEmail = name + '+z' + Lampa.Utils.uid(5).toLowerCase() + '@' + parts[1];
-    } else {
-      newEmail = 'z01_' + Lampa.Utils.uid(8).toLowerCase() + '@gmail.com';
-    }
-    Lampa.Storage.set('z01_trial_email', newEmail);
-    return newEmail;
-  }
-
+  // Сбрасываем только локальный кеш премиум-доступа.
+  // Идентификаторы пользователя не меняем: решение о доступности демо
+  // всегда остаётся за сервером.
   function zpremResetTrial(quiet) {
     Lampa.Storage.set('zpremkey', '');
     Lampa.Storage.set('zprem_expires', '');
     Lampa.Storage.set('zprem_trial_used', '');
-    resetZ01Uid();
-    rotateZ01TrialEmail();
+    zprem_dropped = false;
     if (!quiet && typeof Lampa !== 'undefined' && Lampa.Noty) {
-      Lampa.Noty.show('Демо-режим сброшен, можно активировать заново!');
+      Lampa.Noty.show('Локальный статус демо очищен. Проверьте доступ на сервере.');
     }
   }
   window.zpremResetTrial = zpremResetTrial;
@@ -265,9 +253,7 @@
   }
 
   function zpremTrial(callback) {
-    if (!isZpremActive()) {
-      zpremResetTrial(true);
-    }
+    // Не сбрасываем состояние и не меняем идентификаторы при каждой попытке.
     var email = getZ01Email();
     var uid = Lampa.Storage.get('lampac_unic_id', '');
     if (!email || !uid) { if (callback) callback(false, 'no_data'); return; }
@@ -3408,34 +3394,31 @@
       Lampa.SettingsApi.addParam({
         component: 'z01_premium',
         param: { name: 'z01_trial', type: 'button', default: '' },
-        field: { name: '🎁 Получить / Обновить демо 48ч', description: 'Онлайн фильмы и сериалы' },
+        field: { name: '🎁 Получить демо 48ч', description: 'Запросить тестовый доступ у сервера' },
         onRender: function(item) {
           item.css('display', '');
-          item.find('.settings-param__name').text('🎁 Получить / Обновить демо 48ч');
-          item.find('.settings-param__descr,.settings-param__status').text('Генерация нового ID и сброс демо-доступа');
+          item.find('.settings-param__name').text('🎁 Получить демо 48ч');
+          item.find('.settings-param__descr,.settings-param__status').text('Сервер проверит, доступна ли тестовая активация');
         },
         onChange: function() {
-          Lampa.Noty.show('Активация нового демо...');
-          zpremResetTrial(true);
-          setTimeout(function() {
-            zpremTrial(function(ok, reason) {
-              if (ok) {
-                Lampa.Noty.show('Новый демо-доступ на 48ч активирован! Перезагрузка...');
-                setTimeout(function() { location.reload(); }, 1500);
-              } else {
-                Lampa.Noty.show('Ошибка: ' + reason);
-              }
-            });
-          }, 300);
+          Lampa.Noty.show('Проверяем возможность демо-активации...');
+          zpremTrial(function(ok, reason) {
+            if (ok) {
+              Lampa.Noty.show('Тестовый доступ активирован! Перезагрузка...');
+              setTimeout(function() { location.reload(); }, 1500);
+            } else {
+              Lampa.Noty.show('Демо не активировано: ' + (reason || 'неизвестная ошибка'));
+            }
+          });
         }
       });
 
       Lampa.SettingsApi.addParam({
         component: 'z01_premium',
         param: { name: 'z01_force_reset', type: 'button', default: '' },
-        field: { name: 'Сбросить демо-режим', description: 'Очистить историю триала и сгенерировать новый ID' },
+        field: { name: 'Очистить локальный статус демо', description: 'Удалить сохранённый ключ и срок действия на этом устройстве' },
         onRender: function(item) {
-          item.find('.settings-param__descr,.settings-param__status').text('Смена виртуального ID и Email');
+          item.find('.settings-param__descr,.settings-param__status').text('Идентификатор устройства и история активаций не меняются');
         },
         onChange: function() {
           zpremResetTrial(false);
