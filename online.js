@@ -1604,10 +1604,18 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
         if (name == balanser) opt.addClass('mo-opt--active');
         opt.on('hover:enter', function() {
           if (info.vip && !Lampa.Storage.get('zpremkey', '')) {
-            return _this.vipOffer({
-              title: info.name || name,
-              source: name
+            Lampa.Noty.show('Проверяем подписку...');
+            zpremCheck(function(active) {
+              if (active && Lampa.Storage.get('zpremkey', '')) {
+                _this.switchSource(name);
+              } else {
+                _this.vipOffer({
+                  title: info.name || name,
+                  source: name
+                });
+              }
             });
+            return;
           }
           ui_open = '';
           if (name == balanser) {
