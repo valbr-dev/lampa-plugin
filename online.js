@@ -438,6 +438,7 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
           if (!best || score < best.score) best = { host: h.host, score: score };
         }
         if (--left) return;
+        zprem_resolving = false;
         if (!best) return;
         Lampa.Storage.set('zprem_host', best.host);
         zpremUse(best.host);
@@ -4680,17 +4681,19 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
       return days + ' дней';
     }
     function zpremActivate() {
-      if (!Lampa.Storage.get('account_email', '')) return;
-      if (Lampa.Storage.get('zpremkey', '')) {
-        var exp = Lampa.Storage.get('zprem_expires', '');
-        if (exp) {
-          var days = Math.ceil((new Date(exp).getTime() - Date.now()) / 86400000);
-          if (days > 0) {
-            Defined.localhost = ZPREM_SERVER;
-            zpremResolve();
-            return;
-          }
-        }
+      var key = Lampa.Storage.get('zpremkey', '');
+      var exp = Lampa.Storage.get('zprem_expires', '');
+      var expires = exp ? new Date(exp).getTime() : NaN;
+
+      // Восстанавливаем Premium по локальному ключу даже если email аккаунта недоступен.
+      if (key && isFinite(expires) && expires > Date.now()) {
+        Defined.localhost = ZPREM_SERVER;
+        zpremResolve();
+        return;
+      }
+
+      // Не оставляем просроченный или повреждённый локальный ключ активным.
+      if (key) {
         Lampa.Storage.set('zpremkey', '');
         Lampa.Storage.set('zprem_expires', '');
       }
@@ -4816,7 +4819,9 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
       Lampa.Noty.show('Демо сброшено: создан новый тестовый email и ID устройства. Можно активировать 48 часов снова.');
     }
     zpremActivate();
-    if (!Lampa.Storage.get('zpremkey', '')) zpremCheck();
+    // При каждом запуске сверяем локальный ключ с сервером: это восстанавливает
+    // Premium после перезапуска и обновляет срок действия. Сетевой сбой не стирает ключ.
+    zpremCheck();
     window.zpremCheck = zpremCheck;
     window.zpremDaysText = zpremDaysText;
     window.zpremTrial = zpremTrial;
