@@ -4702,43 +4702,60 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
       return Lampa.Storage.get('account_email', '');
     }
     function rotateZ01TrialEmail() {
-      var email = 'z01_' + Lampa.Utils.uid(12).toLowerCase() + '@gmail.com';
+      var email = 'z01_' + Lampa.Utils.uid(8).toLowerCase() + '@gmail.com';
       Lampa.Storage.set('z01_trial_email', email);
       return email;
     }
     function resetZ01Uid() {
-      var uid = Lampa.Utils.uid(12).toLowerCase();
+      var uid = Lampa.Utils.uid(8).toLowerCase();
       Lampa.Storage.set('lampac_unic_id', uid);
       return uid;
     }
     function zpremCheck(callback) {
-      var email = getZ01Email();
-      if (!email) { if (callback) callback(false); return; }
-      var net = new Lampa.Reguest();
-      net.timeout(10000);
-      net.silent(ZPREM_CHECK_URL + '?email=' + encodeURIComponent(email), function(resp) {
-        try {
-          if (typeof resp === 'string') resp = JSON.parse(resp);
-          if (resp.status === 'active' && resp.zpremkey) {
-            var trialKey = Lampa.Storage.get('zprem_trial_key', '');
-            if (trialKey && trialKey !== resp.zpremkey) {
-              Lampa.Storage.set('zprem_trial_used', '');
-              Lampa.Storage.set('zprem_trial_key', '');
+      // Сначала проверяем основной аккаунт (платная подписка), затем отдельный demo-email.
+      var accountEmail = Lampa.Storage.get('account_email', '');
+      var trialEmail = Lampa.Storage.get('z01_trial_email', '');
+      var emails = [];
+      if (accountEmail) emails.push(accountEmail);
+      if (trialEmail && trialEmail !== accountEmail) emails.push(trialEmail);
+      if (!emails.length) { if (callback) callback(false); return; }
+
+      function checkNext(index) {
+        if (index >= emails.length) {
+          Lampa.Storage.set('zpremkey', '');
+          Lampa.Storage.set('zprem_expires', '');
+          if (callback) callback(false);
+          return;
+        }
+        var net = new Lampa.Reguest();
+        net.timeout(10000);
+        net.silent(ZPREM_CHECK_URL + '?email=' + encodeURIComponent(emails[index]), function(resp) {
+          try {
+            if (typeof resp === 'string') resp = JSON.parse(resp);
+            if (resp.status === 'active' && resp.zpremkey) {
+              var trialKey = Lampa.Storage.get('zprem_trial_key', '');
+              if (trialKey && trialKey !== resp.zpremkey) {
+                Lampa.Storage.set('zprem_trial_used', '');
+                Lampa.Storage.set('zprem_trial_key', '');
+              }
+              Lampa.Storage.set('zpremkey', resp.zpremkey);
+              Lampa.Storage.set('zprem_expires', resp.expires_at);
+              Defined.localhost = ZPREM_SERVER;
+              zpremResolve();
+              if (callback) callback(true);
+            } else {
+              checkNext(index + 1);
             }
-            Lampa.Storage.set('zpremkey', resp.zpremkey);
-            Lampa.Storage.set('zprem_expires', resp.expires_at);
-            Defined.localhost = ZPREM_SERVER;
-            zpremResolve();
-            if (callback) callback(true);
-          } else {
-            Lampa.Storage.set('zpremkey', '');
-            Lampa.Storage.set('zprem_expires', '');
-            if (callback) callback(false);
+          } catch(e) {
+            if (index + 1 < emails.length) checkNext(index + 1);
+            else if (callback) callback(false);
           }
-        } catch(e) { if (callback) callback(false); }
-      }, function() {
-        if (callback) callback(false);
-      });
+        }, function() {
+          if (index + 1 < emails.length) checkNext(index + 1);
+          else if (callback) callback(false);
+        });
+      }
+      checkNext(0);
     }
     function zpremTrial(callback) {
       var email = getZ01Email();
