@@ -3303,20 +3303,60 @@
     };
   }
 
+  var Z01_BLOCK_LANGS = ['uk', 'be'];
+  var Z01_BLOCK_COUNTRIES = ['UA', 'BY'];
+
+  function z01LampaCountry() {
+    var country = '';
+    try { country = String(window.vpn_region || ''); } catch(e) {}
+    if (!country) {
+      try {
+        var region = Lampa.Storage.get('region', '');
+        country = String(region && region.code || '');
+      } catch(e) {}
+    }
+    country = country.trim().toUpperCase();
+    return /^[A-Z]{2}$/.test(country) ? country : '';
+  }
+
+  function z01Country() {
+    var country = z01LampaCountry();
+    if (country) return country;
+    try {
+      var cached = Lampa.Storage.get('z01_geo', '');
+      if (cached && cached.c && Date.now() - (cached.t || 0) < 86400000) return cached.c;
+    } catch(e) {}
+    return '';
+  }
+
+  function z01GeoRefresh() {
+    if (z01Country()) return;
+    try {
+      var net = new Lampa.Reguest();
+      net.timeout(8000);
+      net.silent(ZPREM_TRIAL_URL + '?geo=1', function(response) {
+        if (response && typeof response.country === 'string') {
+          Lampa.Storage.set('z01_geo', { c: response.country || '-', t: Date.now() });
+        }
+      }, function() {});
+    } catch(e) {}
+  }
+
   function isRuUser() {
-    try {
-      var lang = Lampa.Storage.field('language');
-      if (lang) return lang === 'ru';
-    } catch(e) {}
-    try {
-      var nl = (navigator.language || navigator.userLanguage || '').toLowerCase();
-      return nl === 'ru' || nl.indexOf('ru-') === 0;
-    } catch(e) {}
-    return false;
+    var lang = '';
+    try { lang = String(Lampa.Storage.field('language') || ''); } catch(e) {}
+    if (!lang) {
+      try { lang = String(navigator.language || navigator.userLanguage || ''); } catch(e) {}
+    }
+    lang = lang.toLowerCase().split('-')[0];
+    if (Z01_BLOCK_LANGS.indexOf(lang) !== -1) return false;
+    if (Z01_BLOCK_COUNTRIES.indexOf(z01Country()) !== -1) return false;
+    return true;
   }
 
   function startPlugin() {
     window.lampac_z_plugin = true;
+    z01GeoRefresh();
     var manifst = {
       type: 'video',
       version: '',
