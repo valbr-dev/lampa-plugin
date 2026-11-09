@@ -55,3 +55,28 @@ The token stays in your Cloudflare KV namespace; it is not returned to the brows
 - The Worker proxies only Filmix APP API method paths; it is not an arbitrary URL proxy.
 - Filmix controls its own API availability and device limits. This Worker cannot bypass account restrictions or a Filmix-side block.
 - Do not commit Filmix usernames, passwords, session cookies, or device tokens to GitHub.
+
+
+## Automated deployment from GitHub
+
+The repository includes a GitHub Actions workflow at
+`.github/workflows/deploy-filmix-fx5-worker.yml`. It creates the `FX5_KV`
+namespace if it does not exist and deploys the Worker whenever files in this
+folder change (or when manually started).
+
+Add these two **repository Actions secrets** in GitHub:
+
+- `CLOUDFLARE_API_TOKEN` — a Cloudflare API token with Account permissions
+  `Workers Scripts: Edit` and `Workers KV Storage: Edit`, scoped to the
+  account where the Worker should be deployed.
+- `CLOUDFLARE_ACCOUNT_ID` — the Cloudflare account ID.
+
+In GitHub, open **Settings → Secrets and variables → Actions → New repository
+secret** for each value. Do not paste the API token into chat or commit it to
+the repository.
+
+Then open **Actions → Deploy Filmix FX5 Worker → Run workflow**. After a
+successful run, the Worker will be available at
+`https://filmix-fx5-worker.<your-workers-subdomain>.workers.dev` (the exact
+subdomain is shown in the Cloudflare Workers dashboard). Use that base URL in
+the FX5 plugin settings.
