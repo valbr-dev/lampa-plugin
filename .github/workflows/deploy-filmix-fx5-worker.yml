@@ -1,0 +1,86 @@
+name: Deploy Filmix FX5 Worker
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "filmix-fx5-worker/**"
+      - ".github/workflows/deploy-filmix-fx5-worker.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Wrangler
+        run: npm install --global wrangler
+
+      - name: Find or create KV namespace
+        id: kv
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            echo "Missing CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID repository secrets." >&2
+            exit 1
+          fi
+
+          API="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces"
+          RESPONSE="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "$API?per_page=100")"
+
+          NAMESPACE_ID="$(printf '%s' "$RESPONSE" | jq -r '.result[] | select(.title == "FX5_KV") | .id' | head -n 1)"
+
+          if [[ -z "$NAMESPACE_ID" ]]; then
+            CREATE="$(curl --fail-with-body --silent --show-error \
+              -X POST "$API" \
+              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              -H "Content-Type: application/json" \
+              --data '{"title":"FX5_KV"}')"
+            NAMESPACE_ID="$(printf '%s' "$CREATE" | jq -r '.result.id // empty')"
+          fi
+
+          if [[ -z "$NAMESPACE_ID" ]]; then
+            echo "Could not find or create the FX5_KV namespace." >&2
+            exit 1
+          fi
+
+          echo "namespace_id=$NAMESPACE_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Create Wrangler config
+        env:
+          KV_NAMESPACE_ID: ${{ steps.kv.outputs.namespace_id }}
+        run: |
+          cat > filmix-fx5-worker/wrangler.toml <<EOF
+          name = "filmix-fx5-worker"
+          main = "worker.js"
+          compatibility_date = "2026-11-10"
+
+          [[kv_namespaces]]
+          binding = "FX5_KV"
+          id = "$KV_NAMESPACE_ID"
+          EOF
+
+      - name: Deploy Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        working-directory: filmix-fx5-worker
+        run: wrangler deploy --config wrangler.toml
